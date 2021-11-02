@@ -1,4 +1,4 @@
-# Analysis-mouse-USVs-via-Deep-Learning
+# HybridMuse
 
 The main problem of any supervised deep learning method is to obtain labeled data to use in training.
 Fortunately, my team and I labeled hundreds of hours of recordings of vocal communications between mice.
