@@ -17,7 +17,7 @@ file: https://github.com/gutzcha/HybridMuse/blob/master/HybridMuse_app.zip
 
 You may also download the sample files to play around with the app:
 
-https://github.com/gutzcha/HybridMuse/blob/master/balbc 1 files.zip
+https://github.com/gutzcha/HybridMuse/blob/master/balbc_1_files.zip
 
 https://github.com/gutzcha/HybridMuse/blob/master/balbc 2 files.zip
 
