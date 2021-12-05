@@ -11,15 +11,21 @@ and provides an easy way to browse and analyze USVs that outperform other models
 To get started, download the app and follow the instructions in the manual
 
 manual: https://abrasive-lightyear-f6a.notion.site/HybridMuse-18a2b4e869ea492f843a03e9046842b2
+
 file: https://github.com/gutzcha/HybridMuse/blob/master/HybridMuse_app.zip
 
 
 You may also download the sample files to play around with the app:
 
 https://github.com/gutzcha/HybridMuse/blob/master/balbc 1 files.zip
+
 https://github.com/gutzcha/HybridMuse/blob/master/balbc 2 files.zip
+
 https://github.com/gutzcha/HybridMuse/blob/master/c57 1 files.zip
+
 https://github.com/gutzcha/HybridMuse/blob/master/c57 2 files.zip
+
 https://github.com/gutzcha/HybridMuse/blob/master/icr files.zip
+
 https://github.com/gutzcha/HybridMuse/blob/master/rat files.zip
 
