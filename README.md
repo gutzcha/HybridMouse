@@ -18,8 +18,13 @@ file: https://github.com/gutzcha/HybridMuse/blob/master/HybridMuse_app.zip
 You may also download the sample files to play around with the app:
 
 https://github.com/gutzcha/HybridMuse/blob/acd81de4e5995ec55e9100c55a6c4d277ee2526e/balbc%201%20files.zip
+
 https://github.com/gutzcha/HybridMuse/blob/acd81de4e5995ec55e9100c55a6c4d277ee2526e/balbc%202%20files.zip
+
 https://github.com/gutzcha/HybridMuse/blob/acd81de4e5995ec55e9100c55a6c4d277ee2526e/c57%201%20files.zip
+
 https://github.com/gutzcha/HybridMuse/blob/acd81de4e5995ec55e9100c55a6c4d277ee2526e/c57%202%20files.zip
+
 https://github.com/gutzcha/HybridMuse/blob/acd81de4e5995ec55e9100c55a6c4d277ee2526e/icr%20file.zip
+
 https://github.com/gutzcha/HybridMuse/blob/acd81de4e5995ec55e9100c55a6c4d277ee2526e/rat%20files.zip
