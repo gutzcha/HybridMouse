@@ -1,4 +1,4 @@
-# HybridMuse: A hybrid CNN-BiLSTM model for mouse ultrasonic vocalizations extraction
+# HybridMouse: A hybrid CNN-BiLSTM model for mouse ultrasonic vocalizations extraction
 
 
 The main problem of any supervised deep learning method is to obtain labeled data to use in training.
@@ -10,21 +10,21 @@ and provides an easy way to browse and analyze USVs that outperform other models
 
 To get started, download the app and follow the instructions in the manual
 
-manual: https://abrasive-lightyear-f6a.notion.site/HybridMuse-18a2b4e869ea492f843a03e9046842b2
+manual: https://abrasive-lightyear-f6a.notion.site/HybridMouse-18a2b4e869ea492f843a03e9046842b2
 
-file: https://github.com/gutzcha/HybridMuse/blob/master/HybridMuse_app.zip
+file: https://github.com/gutzcha/HybridMouse/blob/master/HybridMouse_app.zip
 
 
 You may also download the sample files to play around with the app:
 
-https://github.com/gutzcha/HybridMuse/blob/acd81de4e5995ec55e9100c55a6c4d277ee2526e/balbc%201%20files.zip
+https://github.com/gutzcha/HybridMouse/blob/acd81de4e5995ec55e9100c55a6c4d277ee2526e/balbc%201%20files.zip
 
-https://github.com/gutzcha/HybridMuse/blob/acd81de4e5995ec55e9100c55a6c4d277ee2526e/balbc%202%20files.zip
+https://github.com/gutzcha/HybridMouse/blob/acd81de4e5995ec55e9100c55a6c4d277ee2526e/balbc%202%20files.zip
 
-https://github.com/gutzcha/HybridMuse/blob/acd81de4e5995ec55e9100c55a6c4d277ee2526e/c57%201%20files.zip
+https://github.com/gutzcha/HybridMouse/blob/acd81de4e5995ec55e9100c55a6c4d277ee2526e/c57%201%20files.zip
 
-https://github.com/gutzcha/HybridMuse/blob/acd81de4e5995ec55e9100c55a6c4d277ee2526e/c57%202%20files.zip
+https://github.com/gutzcha/HybridMouse/blob/acd81de4e5995ec55e9100c55a6c4d277ee2526e/c57%202%20files.zip
 
-https://github.com/gutzcha/HybridMuse/blob/acd81de4e5995ec55e9100c55a6c4d277ee2526e/icr%20file.zip
+https://github.com/gutzcha/HybridMouse/blob/acd81de4e5995ec55e9100c55a6c4d277ee2526e/icr%20file.zip
 
-https://github.com/gutzcha/HybridMuse/blob/acd81de4e5995ec55e9100c55a6c4d277ee2526e/rat%20files.zip
+https://github.com/gutzcha/HybridMouse/blob/acd81de4e5995ec55e9100c55a6c4d277ee2526e/rat%20files.zip
