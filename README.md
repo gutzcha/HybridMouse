@@ -17,7 +17,7 @@ manual: https://abrasive-lightyear-f6a.notion.site/HybridMouse-18a2b4e869ea492f8
 file: https://github.com/gutzcha/HybridMouse/blob/master/HybridMouse_app.zip
 
 
-You may also download the sample files to play around with the app:
+You may also download the sample files to play around with the app
 
 
 Bibtex
