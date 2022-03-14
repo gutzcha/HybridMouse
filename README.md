@@ -20,7 +20,10 @@ file: https://github.com/gutzcha/HybridMouse/blob/master/HybridMouse_app.zip
 You may also download the sample files to play around with the app
 
 
-Bibtex
+Please consider citing the main article:
+
+## Bibtex
+
 @ARTICLE{10.3389/fnbeh.2021.810590,
 AUTHOR={Goussha, Yizhaq and Bar, Kfir and Netser, Shai and Cohen, Lior and Hel-Or, Yacov and Wagner, Shlomo},   
 TITLE={HybridMouse: A Hybrid Convolutional-Recurrent Neural Network-Based Model for Identification of Mouse Ultrasonic Vocalizations},      
