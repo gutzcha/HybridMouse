@@ -268,7 +268,7 @@ if isempty(ylims)
     ylims = [floor(f(1)),ceil(f(end))] ;
     return
 end
-if ylims(1)>f(1)
+if ylims(1)<f(1)
     warning('Frequency lower limit if out of bound, setting to min')
     
     ylims(1)  = f(1);
