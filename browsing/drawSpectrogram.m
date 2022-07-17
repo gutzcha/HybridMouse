@@ -57,12 +57,12 @@ times = dataIn.times;
 vecLen = numel(vec);
 
 % %Fix win length if the sampling rate was modified
-if fs<5001
-    %Normal bin length is seconds
-    win = 20;
-    fftWin = 20;
-    overlap = 18;
-end
+% if fs<5001
+%     %Normal bin length is seconds
+%     win = 20;
+%     fftWin = 20;
+%     overlap = 18;
+% end
 
 %Fix times
 if isempty(times)
@@ -176,7 +176,13 @@ if vecLen>max(win)
     
     %Adjust ylims
     [s,f,ylims] = adjustYlims(s,f,ylims);
+    try
     axSpect.YLim = ylims;
+    catch ME
+        
+        disp("Unable to set ylims")
+        disp(ME.message)
+    end
     %     s = imgaussfilt(abs(s),1);
     
     %Convert to power
