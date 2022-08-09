@@ -260,6 +260,7 @@ Outputs:
             obj.psd = ps;
             obj.spectrogram_sample_rate = numel(t)/(t(end)-t(1));
         end
+        
         function tab = get.allROIs(obj)
             added = obj.addedTypeList;
             basicTypes = obj.roiTypeList;
@@ -391,7 +392,7 @@ Outputs:
             
             if isempty(input)
                 if ~isempty(obj)
-                    warning('Added roi list was deleted')
+                    %warning('Added roi list was deleted')
                 end
                 obj.addedTypeList(:,:) = [];
             elseif istable(input)||iscell(input)
@@ -590,10 +591,20 @@ inputs:
                 end
                 
         end
-        function tabout = filtered_roi_table(obj,labels)
+        function tabout = filtered_roi_table(obj,labels, times)
             tabout = obj.roiTable;
-            inds_to_filter = any(tabout.Label== labels,2);
-            tabout = tabout(inds_to_filter,:);
+            if exist('labels', 'var')&&~isempty(labels)
+                inds_to_filter = any(tabout.Label== labels,2);
+                tabout = tabout(inds_to_filter,:);
+            end
+            
+            if exist('times', 'var')&&~isempty(times)
+                inds_to_filter = all([tabout.TimeStart>= times(1),tabout.TimeEnd<= times(2)],2);
+                tabout = tabout(inds_to_filter,:);
+            end
+            
+
+
         end
         function tabout = get.extended_roi_table(obj)
             %Reconstcut table to match other programms
@@ -1027,7 +1038,7 @@ Variables in table:
             [~,ind] = max(obj.vecSegment(obj,timeRange)) ;
             estimatedTriggerTime = (ind/obj.fs)+timeRange(1);
         end
-        function currentVec = getCurrentVec(obj,timeRange,fsIn)
+        function [currentVec, time_stamps] = getCurrentVec(obj,timeRange,fsIn)
             if ~exist('timeRange','var')||isempty(timeRange)
                 timeRange = obj.times;
             end
@@ -1036,6 +1047,7 @@ Variables in table:
             end
             
             currentVec = audioClip.vecSegment(obj,timeRange,fsIn);
+            time_stamps = audioClip.get_time_vec(timeRange,fsIn);
         end
         function [vecSegmentOut, newFs, vecSegment] = playSegment(obj,fromFs,toFs,volume,speed,timeRange,vecIn,fsIn)
             % [newVecOut, newFsOut, vecSegment] = playSegment(obj,fromFs,toFs,volume,speed,timeRange)
@@ -1731,6 +1743,32 @@ Variables in table:
             
      
         end
+        function plot_current_vec_with_vocalization(obj, time_range, labels)
+            if ~exist('time_range','var')||isempty(time_range)
+                time_range = obj.times;
+            end
+             if ~exist('labels','var')
+                labels = [];
+             end
+             
+            [vec_,t] = obj.getCurrentVec(time_range);
+            tab = obj.filtered_roi_table(labels,time_range)  ;
+            voc_times = [tab.TimeStart,tab.TimeEnd];
+            t_voc = nan(size(t));
+            for it = 1:size(voc_times,1)
+                t_voc((voc_times(it,1)<t) & (t<=voc_times(it,2))) = vec_((voc_times(it,1)<t) & (t<=voc_times(it,2)));
+            end
+            f = figure;
+%             ax = f.CurrentAxes;
+            plot( t,vec_)
+            hold on
+            plot( t,t_voc)
+            hold off
+            title(obj.name)
+            ax = f.CurrentAxes;
+            ax.XLabel.String = 'Time (sec)';
+%             ax.YLabel.String = ''
+        end
         function denoised=get_power_vector_wrapper(obj,signal_data,noise_data,filter_flag)
                 
            
@@ -1762,7 +1800,7 @@ Variables in table:
               
                 
             end
-               
+              
         function [new_tab,old_tab] = refresh_scores(obj)
             
             t = obj.roiTable;
@@ -1897,6 +1935,24 @@ Variables in table:
             if numSegments==1
                 vecseg = vecseg{:,:};
                 all_inds = all_inds{:,:};
+            end
+        end
+        function timevec = get_time_vec(time_range,fs_)
+            
+            sz = size(time_range,1);
+            if sz==1
+         
+            time_diff = diff(time_range);
+            n_points = round(time_diff*fs_)+1;
+            timevec = linspace(time_range(1),time_range(2),n_points);
+            timevec(end) = [];
+            else
+                all_vec = cell(sz,1);
+                for i1 = 1:sz
+                    all_vec{i1} = audioClip.get_time_vec(time_range(i1,:),fs_);
+
+                end
+                timevec = all_vec;
             end
         end
         function [file,vec,info,errInfo] = loadAudioFile(file,path)
