@@ -5,7 +5,7 @@ classdef LabeledAudioDatastore < matlab.io.Datastore & ...
     properties
         DatastoreSignal
         DatastoreNoise
-        SignalNoiseRasio = 0.5
+        SignalNoiseRasio = 0.95;
         Labels
         MiniBatchSize
         SequenceLength = 6;
@@ -13,6 +13,25 @@ classdef LabeledAudioDatastore < matlab.io.Datastore & ...
         SequenceDimension
         FileSize
         Overlap
+        ImageWidth
+        OverrideExtractor
+        extreactioOptionsForPreparation = struct(...
+            'defined_filter',[],...
+            'file_size',[],...
+            'overlap',[],...
+            'image_width',[],...
+            'feature_flag',[],...
+            'fs',[],...
+            'new_fs_in',[],...
+            'overrideExtractor',[])
+        gaussina_filter = struct(...
+            'win_len',10,...
+            'g_std',2)
+            
+        
+ 
+        
+            
     end
     
     properties(Dependent)
@@ -33,7 +52,7 @@ classdef LabeledAudioDatastore < matlab.io.Datastore & ...
     
     methods
         
-        function ds = LabeledAudioDatastore(signal_ds,noise_ds)
+        function ds = LabeledAudioDatastore(signal_ds,noise_ds, extractor_param)
             % Construct a LabeledAudioDatastore object
    
             ds.DatastoreSignal = signal_ds;
@@ -48,14 +67,76 @@ classdef LabeledAudioDatastore < matlab.io.Datastore & ...
             ds.SequenceDimension = X.numel_total;
             
             % Initialize datastore properties.
-            ds.MiniBatchSize = 4;
             ds.NumObservations = numObservations;
             ds.CurrentFileIndex = 1;
             ds.CurrentFileIndex_noise = 1;
-            ds.FileSize = 2;
-            ds.Overlap = 0;
+            
+            if ~exist('extractor_param','var')
+               extractor_param = []; 
+            end
+              
+            if isfield(extractor_param,'MiniBatchSize')
+                ds.MiniBatchSize = extractor_param.MiniBatchSize;
+            else
+                ds.MiniBatchSize = 4;
+            end
+            
+            if isfield(extractor_param,'FileSize')
+                ds.FileSize = extractor_param.FileSize;
+            else
+                ds.FileSize = 2;
+%                 ds.FileSize = 0.5;
+            end
+            % TODO: check input validity
+            if isfield(extractor_param,'Overlap')
+                ds.Overlap = extractor_param.Overlap;
+            else
+%                 ds.Overlap = 0;
+                ds.Overlap = 5;
+            end
+            
+            if isfield(extractor_param,'ImageWidth')
+                ds.ImageWidth = extractor_param.ImageWidth;
+            else
+%                ds.ImageWidth = 51;
+               ds.ImageWidth = 9;
+            end
+            
+            if isfield(extractor_param,'OverrideExtractor')
+                ds.OverrideExtractor = extractor_param.OverrideExtractor;
+            else
+                ds.OverrideExtractor = [];
+            end
+            
+            
+            
         end
-   
+        function set.gaussina_filter(ds,params)
+            gaussian_params = ds.gaussina_filter;
+            if isfield('win_len',params)
+                gaussian_params.win_len = params.win_len;
+            end
+            if isfield('g_std',params)
+                gaussian_params.g_std = params.g_std;
+            end
+            ds.gaussina_filter = gaussian_params;
+        end
+        function y = smooth_truth_vec(ds,x)
+            gaussina_filter_param = ds.gaussina_filter;
+            win_len = gaussina_filter_param.win_len;
+            g_std = gaussina_filter_param.g_std;
+%             w = gausswin(win_len, g_std)/sum(gausswin(win_len, g_std));
+            w = gausswin(win_len, g_std);
+            n_col = size(x,2);
+            y = zeros(size(x));
+            for ic = 1:n_col
+                y(:,ic) = conv(x(:,ic),w','same');      
+            end
+            % clip
+            y(y>1) = 1;
+            
+        end
+        
         function tf = hasdata(ds)
             % Return true if more data is available
             tf = ds.CurrentFileIndex + ds.MiniBatchSize - 1 ...
@@ -113,26 +194,74 @@ classdef LabeledAudioDatastore < matlab.io.Datastore & ...
             data = preprocessData(ds,predictors,responses);
         end
         
-        function data = preprocessData(ds,predictors,responses)
+        function data = preprocessData(ds,signal,responses)
             % data = preprocessData(ds,predictors,responses) preprocesses
             % the data in predictors and responses and returns the table
             % data
             
-            predictors = cell2mat(vertcat(predictors{:})');
-            responses = cell2mat(vertcat(responses{:})');
+            signal = cell2mat(vertcat(signal{:})');
+%             responses = cell2mat(vertcat(responses{:})');
             
+            % multilabel data
+            responses_temp = (cat(2,responses{:}));
+            responses_temp = cat(3, responses_temp{:});
+            [n_bins, n_labels, n_vecs] = size(responses_temp);
+            responses_cat = categorical(repmat("bg",[n_bins,n_vecs]));
+            labels =  {'Low','subjectUSV','bg'};
+            for icat = 1:n_labels-1
+                for ivec = 1:n_vecs
+                    responses_cat(squeeze(responses_temp(:,icat,ivec))) = labels{icat};
+                end
+            end
+            
+            %smooth responses
+          
+%             responses = smooth_truth_vec(ds,responses);
         
             fs = ds.SamplingRate;
             file_size = ds.FileSize;
             overlap = ds.Overlap;
-            image_width = 51;
+            image_width = ds.ImageWidth;
             feature_flag = false;
             new_fs_in = [];
+            output_class = 'categorical';
+            override = ds.OverrideExtractor;
+            
+            %testing%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+         
+            
+            windowDuration = round(fs*1); % one second
+            overlapDuration = windowDuration-3; % 0.9 of window
+            
+            defined_filter = audioFeatureExtractor(...
+                SampleRate=fs, ...
+                Window=hann(windowDuration,"periodic"), ...
+                OverlapLength=overlapDuration,...
+                spectralCentroid=true);
+%             override = [];
+            
+            %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+%                         signal = reshape(signal,[],1);
+%                         if ~isempty(responses)
+%                         responses = reshape(responses,[],1);
+%                         end
+%             defined_filter = define_a_filter(11,8);
+            [predictors,~,responses,~,signal]=...
+                prepare_file_for_model(signal,defined_filter,file_size,overlap,image_width,feature_flag,fs,new_fs_in,responses,override,output_class);
                         
-            defined_filter = define_a_filter(11,8);
-            [predictors,~,responses]=...
-                prepare_file_for_model(predictors,defined_filter,file_size,overlap,image_width,feature_flag,fs,new_fs_in,responses);
+           
+            % Set option for future extraction
                         
+            ret.defined_filter = defined_filter;
+            ret.file_size = file_size;
+            ret.overlap = overlap;
+            ret.image_width = image_width;
+            ret.feature_flag = feature_flag;
+            ret.fs = fs;
+            ret.new_fs_in = new_fs_in;
+            ret.overrideExtractor = ds.OverrideExtractor;
+            ds.extreactioOptionsForPreparation = ret;     
+            
             % Return data as a table.
             data = table(predictors,responses);
         end
@@ -159,14 +288,14 @@ classdef LabeledAudioDatastore < matlab.io.Datastore & ...
             if numel(inds)>ds.NumObservations||max(inds)>ds.NumObservations
                 error('Indecies are out of bound')
             end
-            file_list = ds.Datastore.Files;
+            file_list = ds.DatastoreSignal.Files;
             labels = ds.Labels;
             
             sub_file_list = file_list(inds);
             sub_labels = labels(inds);
             
             sub_ds = copy(ds);
-            sub_ds.Datastore.Files = sub_file_list;
+            sub_ds.DatastoreSignal.Files = sub_file_list;
             sub_ds.Labels = sub_labels;
             sub_ds.NumObservations = numel(inds);
         end

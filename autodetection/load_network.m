@@ -17,7 +17,7 @@ catch ME
         warning(ME.message)
         [ret,net,networkpath] = getNewNet(networkpath);
     end    
-        if ~isa(net,'DAGNetwork')
+        if ~((isa(net,'DAGNetwork'))||isa(net,'nnet.cnn.LayerGraph'))
             warning('Unable to assign network')
             return
         end

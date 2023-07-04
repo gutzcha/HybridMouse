@@ -1,4 +1,4 @@
-function [truth_vec, error_flag] = create_logical_vec_from_table_v2(tab,total_len_bin,fs,input_type,units)
+function [truth_vec, error_flag] = create_logical_vec_from_table_v2(tab,total_len_bin,fs,input_type,label)
 %create_logical_vec_from_csv(tab,total_len,fs)
 %  Create a logical vector from a table
 %{
@@ -12,13 +12,19 @@ inputs:
 output:
     truth vec - a logical vector of length total_len*fs
   %} 
-
 error_flag.value = false;
 error_flag.msg = [];
 error_flag.ind_to_remove = [];
 
 if ~exist('fs','var')||isempty(fs)
    fs = 2.5e5; 
+end
+
+if exist('label','var')&& ~isempty(label)
+    if ~istable(tab)
+        error('when parameter label is inputed, the tab must be a table')
+    end
+    tab = tab(tab.label==label);
 end
 
 if istable(tab)
@@ -28,6 +34,8 @@ if ~exist('input_type','var')||isempty(input_type)
     input_type = 'audio';    
 end
 
+
+
 %If the table is empty, return an array of zeros
 total_len = total_len_bin/fs;
 if isempty(tab)||(input_type=="noise")
@@ -35,8 +43,10 @@ if isempty(tab)||(input_type=="noise")
     return
 end
 
+
 %Check table for error and remove bad lines
-error_flag = check_input(tab,total_len);
+dt = 1/fs;
+error_flag = check_input(tab,total_len-dt);
 if error_flag.value
     bad_lines = tab(error_flag.ind_to_remove,:);
     tab(error_flag.ind_to_remove,:) = [];
@@ -94,7 +104,7 @@ if sum(ind)
     
     ind = find(ind);
     ind_to_remove = [ind_to_remove;ind];
-    msg = sprintf('All values in the table must be less than the total length of the segment- line/s %d\n',ind);
+    msg = string(sprintf('All values in the table must be less than the total length of the segment- line/s %d\n',ind));
     error_flag.msg = [error_flag.msg;msg] ;
 end
 

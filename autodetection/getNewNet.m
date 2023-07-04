@@ -14,9 +14,9 @@ end
 
 try
     net = netmatfile.net;
-    if ~isa(net,'DAGNetwork')
+    if ~(isa(net,'DAGNetwork')||isa(net,'nnet.cnn.LayerGraph'))
         net = [];
-        disp('No network was chocen')
+        disp('No network was chocen, it must be DAGNetwork')
     else
         networkpath = fullfile(path,file);
         fprintf('The network has been changed to %s\n',networkpath);

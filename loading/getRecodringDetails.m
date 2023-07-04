@@ -36,10 +36,15 @@ else
 end
 
 %Get stimulus sex (male, female, mirror)
-if contains(str,'female')
+
+if contains(str,'-male')
+    stimulusSex = 'male';
+elseif contains(str,'-fmale')
     stimulusSex = 'female';
 elseif contains(str,'mirror')
         stimulusSex = 'mirror'; %Only one case
+elseif contains(str,'juvenile') % All juveniles are female
+    stimulusSex = 'female';
 else
     stimulusSex='male'; %Default
 end

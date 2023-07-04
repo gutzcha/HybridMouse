@@ -47,6 +47,9 @@ disableDefaultInteractivity(axSpect)
 %Get data and properties from dataIn
 vec = dataIn.vec;
 
+
+
+
 fs = dataIn.fs;
 win = dataIn.window;
 overlap = dataIn.overlap;
@@ -154,6 +157,11 @@ vec = vec(segmentInds);
 
 vec = vec./max(abs(vec)); %Normlize, I dont know why this is important but it is imposible to draw ROI if it is not normlized
 vecLen = numel(vec);
+
+% EXPERIMENT DELETE LATER - FILTER AUDIO BEFOR PLOTTING
+% vec = bandpass(vec, [30000,70000], fs);
+% vec = vec - smooth(vec, 5);
+
 %  if fs>50000
 %     vec = imgaussfilt((vec),1);
 %     vec2 = imgaussfilt((vec),1.5);
@@ -167,6 +175,7 @@ if vecLen>max(win)
     try
         %Maybe add minithreshhold later
         [s,f,t,ps] = spectrogram(vec,hamming(win),overlap,fftWin,fs,'yaxis');
+    
     catch ME
         warning(ME.message,'Invalid spectrogram parameters')
         [s,f,t,ps] = spectrogram(vec,hamming(win),[],[],fs,'yaxis');
@@ -187,7 +196,11 @@ if vecLen>max(win)
     
     %Convert to power
     s = 10*log10((abs(s)));
-    
+    filter_stripes = false;
+%     filter_stripes = true;
+    if filter_stripes
+        s = filter_lines(s);
+    end
     %Downsample
     %Allways display a maximum of maxPoint time points
     
@@ -266,6 +279,7 @@ dataIn.spectrogram_sample_rate = (numel(t))/(t(end)-t(1));
 axSpect.XTickLabelMode = 'auto';
 axP.XTickLabelMode = 'auto';
 % zoom(ancestor(axSpect,'Figure'),'reset')
+% colormap(axSpect, 'jet');
 end
 
 function [s,f,ylims] = adjustYlims(s,f,ylims)
@@ -297,3 +311,30 @@ f = f+minfVal;
 
 end
 
+function im = filter_lines(im)
+% im = real_s;
+d = 5;
+fft2_s = fftshift(fft2(im));
+% fft2_s(:,4029) = fft2_s(:,4025);
+% fft2_s(:,4030) = fft2_s(:,4035);
+% fft2_s = fftshift(fft2_s);
+% s_r = log(abs(ifft(fft2_s)));
+[r,c] = size(im);
+r = round(r/2);
+c = round(c/2);
+
+inds = r-d:r+d;
+vals = mean([fft2_s(r-(d+1),:);fft2_s(r+d+1,:)]);
+fft2_s(inds,:) = repmat(vals,[d*2+1,1]);
+% fft2_s = fftshift(fft2_s);
+% s_r = ifft2(fft2_s);
+% im = log(abs(s_r));
+% im = s_r;
+inds = c-d:c+d;
+vals = mean([fft2_s(:,c-(d+1)),fft2_s(:,c+d+1)],2);
+% fft2_s(:,inds) = repmat(vals,[1,d*2+1]);
+fft2_s = fftshift(fft2_s);
+s_r = ifft2(fft2_s);
+im = log(abs(s_r));
+% figure;surface(s_r,'EdgeColor','none')
+end

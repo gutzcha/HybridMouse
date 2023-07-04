@@ -13,6 +13,7 @@ classdef audioClip < handle
             'paradigm','',...
             'dayNum',0,...
             'recordingMode','main',...
+            'subjectSex','male',...
             'stimulusSex','',...
             'stimulusAge','',...
             'nameOfAnalyst','');
@@ -96,7 +97,6 @@ classdef audioClip < handle
         function this = audioClip(S,dataIn)
             
             this.roiTable = audioClip.roiTableTemplate;
-            
             if nargin==0
                 %AUDIOCLIP Construct an instance of this class
                 %   Detailed explanation goes here
@@ -123,6 +123,9 @@ classdef audioClip < handle
                     if isfield(S,'load_audio_vector_flag')
                         this.load_audio_vector_flag = S.load_audio_vector_flag;
                     end
+                    if isfield(S,'probability_vector')
+                        this.probability_vector = S.probability_vector;
+                    end
                 else
                     if isvector(S)
                         this.vec = S;
@@ -137,8 +140,12 @@ classdef audioClip < handle
             end
         end
         
-        function obj_copy = copyobj(obj,p)
-            obj_copy = audioClip;
+        function obj_copy = copyobj(obj,p, objtype)
+            if ~exist('objtype','var')
+                obj_copy = audioClip;
+            else
+                obj_copy = objtype;
+            end
             if ~exist('p','var')||isempty(p)
                 p = properties(obj);
             end
@@ -149,13 +156,70 @@ classdef audioClip < handle
             
             for ip = 1:num_att
                 this_att = p{ip};
-                mp = findprop(audioClip,this_att);
+                mp = findprop(obj_copy,this_att);
                 % Dont copy constants and dependant properties
-                if mp.Dependent || mp.Constant
-                   continue 
-                end 
+                if isempty(mp) || mp.Dependent || mp.Constant
+                    continue
+                end
                 obj_copy.(this_att) = obj.(this_att);
             end
+            
+        end
+        function newObj = split_obj_by_time(obj,labels,times_range)
+            
+            if isempty(obj)
+                newObj = audioClip;
+                return
+            end
+            
+            if ~exist('labels','var')||isempty(labels)
+                labels = [];
+            end
+            
+            if ~exist('times_range','var')||isempty(times_range)
+                times_range = [0, obj.audioLen_];
+            end
+            
+            newObj = copyobj(obj);
+            newObj.vec = obj.getCurrentVec(times_range);
+            tab = obj.filtered_roi_table(labels,times_range);
+            
+            tab.TimeStart = tab.TimeStart-times_range(1);
+            tab.TimeEnd = tab.TimeEnd-times_range(1);
+            
+            
+            newObj.refresh_audioLen;
+            newObj.times_ = [0,1];
+            newObj.roiTable = tab;
+            
+        end
+        function labels_vector = get_labels_vector(obj,labels,output_length, output_fs)
+            if ~exist('labels','var')||isempty(labels)
+                labels = {};
+            end
+            if ~exist('output_length','var')||isempty(output_length)
+                output_length = numel(obj.vec);
+                
+            end
+            if ~exist('output_fs','var')||isempty(output_fs)
+                output_fs = obj.fs;
+            end
+            
+            tab = obj.filtered_roi_table(labels);
+            tab = tab{:,["TimeStart","TimeEnd"]};
+            labels_vector = create_logical_vec_from_table_v2(tab,output_length, output_fs);
+        end
+        function newObj = downsample_obj(obj,newFs)
+            newObj = copyobj(obj);
+            downvec = downsample_audio(obj.vec,obj.fs, newFs);
+            newObj.fs = newFs;
+            newObj.vec = downvec;
+            newObj.refresh_audioLen;
+            newObj.roiTable = obj.roiTable;
+            newObj.window = 1000;
+            newObj.overlap = 950;
+            newObj.fft = 1000;
+            newObj.ylims = [5 50];
             
         end
         function set.climMode(this,val)
@@ -271,6 +335,13 @@ Outputs:
             end
             
         end
+        function tvec = get.timeVecAll(obj)
+            len = obj.audioLen;
+            fs_ = obj.fs;
+            n_bins = floor(len*fs_);
+            tvec = (0:(n_bins-1))./fs_;
+            
+        end
         function set.fs(obj,newFs)
             %When changing the sampling rate, the time stamps should also be updated to match the new fs
             
@@ -357,6 +428,7 @@ Outputs:
                 error('Invalid roi table input')
             end
             obj.roiTable = input;
+            
         end
         
         function ret = isempty(obj)
@@ -380,7 +452,7 @@ Outputs:
         end
         function change_folder(obj,new_folder,verbose)
             if ~exist('verbose','var')
-               verbose = false; 
+                verbose = false;
             end
             obj.info.filePath = new_folder;
             if verbose
@@ -435,14 +507,20 @@ Outputs:
         end
         function set.probability_vector(obj,ret)
             if isempty(ret)
-                
                 return
             end
+            
+            if isa(ret,'timetable')
+                obj.probability_vector = ret;
+                return
+            end
+            
             try
                 prob_vec = ret.Probability;
             catch
                 prob_vec = ret.prob_vec;
             end
+            
             if isfield(ret,'detection_times')
                 detection_times = ret.detection_times;
             else
@@ -467,6 +545,9 @@ Outputs:
                 return
             end
             [~,objName,~] = fileparts(thisName);
+        end
+        function refresh_info(obj)
+            obj.info = getRecodringDetailsFemales(obj.name,obj.path);
         end
         function exlTable = saveExcle(...
                 obj,...
@@ -543,7 +624,7 @@ inputs:
                 
                 %Prevent overwriting
                 fileNameCounter = 2;
-                fullfilename = [fileName,fileType];
+                fullfilename = [char(fileName),fileType];
                 while isfile(fullfilename)
                     fullfilename = sprintf('%s_%03d%s',fileName,fileNameCounter,fileType);
                     fileNameCounter = fileNameCounter+1;
@@ -552,8 +633,7 @@ inputs:
                 %In some cases, the delais are missing, regather info to
                 %prevent errors
                 if refreshInfoFlag
-                    obj.info = getRecodringDetails(obj.info.fileName,...
-                        obj.info.filePath,obj.info.fileName);
+                    obj.refresh_info;
                 end
                 
                 %Add recording data
@@ -571,12 +651,13 @@ inputs:
                         tab.ratNum = repmat({obj.info.ratNum},[size(tab,1),1]);
                         tab.recordingDay = repmat({obj.info.dayNum},[size(tab,1),1]);
                         tab.paradigme = repmat({obj.info.paradigm},[size(tab,1),1]);
+                        tab.subjectSex = repmat({obj.info.subjectSex},[size(tab,1),1]);
                         tab.stimulusSex = repmat({obj.info.stimulusSex},[size(tab,1),1]);
                         tab.stimulusAge = repmat({obj.info.stimulusAge},[size(tab,1),1]);
                         tab.recordingMode = repmat({obj.recordingMode},[size(tab,1),1]);
                         tab.nameOfAnalyst = repmat({obj.info.nameOfAnalyst},[size(tab,1),1]);
                         %Move file info to front
-                        vars = [9:15];
+                        vars = [9:16];
                         tab = movevars(tab,vars,'Before',1);
                     case 'extended'
                         tab = obj.extended_roi_table;
@@ -603,8 +684,8 @@ inputs:
                 tabout = tabout(inds_to_filter,:);
             end
             
-
-
+            
+            
         end
         function tabout = get.extended_roi_table(obj)
             %Reconstcut table to match other programms
@@ -672,6 +753,45 @@ Variables in table:
             Sig_psd = num2cell(Sig_psd);
             tabout = table(File_Name,File_Path,Id,Label,Score,Local_SNR,Sig_AMP,Sig_psd,Filtered_psd,Trigger_Time,Begin_Time,End_Time,USV_Length,Mean_Freq,Low_Freq,High_Freq,Range_Freq);
         end
+        function tab = short_table_to_roiTable(obj,tab,x_offset, y_offset)
+            % y_offset - lift the box so it will not overlap
+            if ~exist('y_offset','var')
+                y_offset = 0;
+            end
+            
+            % x_offset - compensate for the shift in time
+            if ~exist('x_offset','var')
+                x_offset = 0;
+            end
+            
+            sz = size(tab,1);
+            isTableCol = @(t, thisCol) ismember(thisCol, t.Properties.VariableNames);
+            if isTableCol(tab,'FrLow')
+                FrLow = tab.FrLow;
+                FrHigh = tab.FrHigh;
+            else
+                FrLow = zeros(sz,1) + y_offset;
+                FrHigh = ones(sz,1)*20000 + y_offset;
+            end
+            
+            if isTableCol(tab,'Label')
+                Label = tab.Label;
+            else
+                Label = repmat("undefined",[sz,1]);
+            end
+            
+            
+            TimeStart = tab.Onsets + x_offset;
+            TimeEnd = tab.Offsets + x_offset;
+            Duration = TimeEnd - TimeStart;
+            SourcePath = repmat({obj.path},size(TimeStart));
+            Comments = repmat("",size(TimeStart));
+            Score = nan(sz,1);
+            %             tab = table(Label,TimeStart,TimeEnd,FrLow,FrHigh,Duration,AudioVector,SourcePath,Comments);
+            tab = table(Label,TimeStart,TimeEnd,FrLow,FrHigh,Duration,Score,SourcePath,Comments);
+            tab = sortrows(tab,{'TimeStart','Label'});
+            
+        end
         function [tab] = roi2table(obj,roilist)
             
             if ~exist('roilist','var')||isempty(roilist)
@@ -707,7 +827,7 @@ Variables in table:
                 if contains('Score',roilist.tab.Properties.VariableNames)
                     Score = roilist.tab.Score;
                 else
-                    Score = nan(size(roilist.tab,1));
+                    Score = nan(size(roilist.tab,1),1);
                 end
             else
                 tab = obj.roiTableTemplate;
@@ -1049,9 +1169,14 @@ Variables in table:
             currentVec = audioClip.vecSegment(obj,timeRange,fsIn);
             time_stamps = audioClip.get_time_vec(timeRange,fsIn);
         end
-        function [vecSegmentOut, newFs, vecSegment] = playSegment(obj,fromFs,toFs,volume,speed,timeRange,vecIn,fsIn)
+        function [vecSegmentOut, newFs, vecSegment] = playSegment(obj,fromFs,toFs,volume,speed,timeRange,vecIn,fsIn, filter_smooth_flag)
             % [newVecOut, newFsOut, vecSegment] = playSegment(obj,fromFs,toFs,volume,speed,timeRange)
             
+            
+            % change this later
+            filter_smooth_flag = true;
+            %             filter_smooth_flag = false;
+            % set input parameters
             if ~exist('fromFs','var')||isempty(fromFs)
                 fromFs = 60000;
             end
@@ -1059,8 +1184,6 @@ Variables in table:
             if ~exist('toFs','var')||isempty(toFs)
                 toFs = 5000;
             end
-            
-            
             
             if ~exist('volume','var')||isempty(volume)
                 volume = 1;
@@ -1078,6 +1201,23 @@ Variables in table:
                 vecSegment = obj.vec(round((1+timeRange(1)*obj.fs):(timeRange(2)*obj.fs)));
             else
                 vecSegment = vecIn;
+            end
+            
+            if filter_smooth_flag
+                %                 vecSegment  = vecSegment-smooth(vecSegment,100000);
+                %                 vecSegment  = vecSegment-smooth(vecSegment,10000);
+                %                 vecSegment  = vecSegment-smooth(vecSegment,1000);
+                
+                %                 vecSegment  = vecSegment-smooth(vecSegment,10);
+                vecSegment  = vecSegment-smooth(vecSegment,100);
+                %                 vecSegment = bandpass(vecSegment,[5000,100000],obj.fs);
+                %                 vecSegment(1:5000,:) = [];
+                %                 vecSegment(end-5000:end,:) = [];
+                vecSegment = rmoutliers(vecSegment);
+                vecSegment = detrend(vecSegment);
+                %                 vecSegment = highpass(vecSegment,20000, obj.fs);
+                vecSegment = rescale(vecSegment,-1,1);
+                
             end
             
             if ~exist('fsIn','var')||isempty(fsIn)
@@ -1109,36 +1249,36 @@ Variables in table:
             end
         end
         
-%         function cellArray = getAllSegments(obj,margins, inds, labelsToKeep,randomizeFlag)
-%             cellArray =  getAllSegmentsGeneral(obj.vec,obj.fs,obj.roiTable ,margins, inds, labelsToKeep,randomizeFlag);
-%         end
-
-        function cellArray = getAllSegments(obj,labelsToKeep,randomizeFlag)
+        %         function cellArray = getAllSegments(obj,margins, inds, labelsToKeep,randomizeFlag)
+        %             cellArray =  getAllSegmentsGeneral(obj.vec,obj.fs,obj.roiTable ,margins, inds, labelsToKeep,randomizeFlag);
+        %         end
+        
+        function cellArray = getAllSegments(obj,labelsToKeep,randomizeFlag,add_to_range)
             cellArray = [];
-            if (obj.emptyFlag)||isempty(obj.vec) 
+            if (obj.emptyFlag)||isempty(obj.vec)
                 return
             end
-          
-          
+            
+            
+            
             
             if ~exist('labelsToKeep','var')||isempty(labelsToKeep)
-                labelsToKeep = '';
+                labelsToKeep = {''};
             end
             
             if ~exist('randomizeFlag','var')||isempty(randomizeFlag)
                 randomizeFlag = false;
             end
-            
-            t = obj.roiTable;
-            %Filter labels
-            if ~isempty(labelsToKeep)
-                t(t.Label~=labelsToKeep,:) = [];
+            if ~exist('add_to_range','var')||isempty(add_to_range)
+                add_to_range = 0;
             end
-                           
+            t = obj.filtered_roi_table(labelsToKeep);
+            
+            
             if isempty(t)
                 return
             end
-            timeRange = [t.TimeStart,t.TimeEnd];
+            timeRange = [t.TimeStart-add_to_range,t.TimeEnd+add_to_range];
             max_len = obj.audioLen_;
             bad_times = any(timeRange>max_len,2);
             
@@ -1150,22 +1290,37 @@ Variables in table:
             
         end
         
-        function [axout,out_mat] = plot_psd_surface(obj,normalize_method)
+        %         function [axout,out_mat] = plot_psd_surface(obj,normalize_method)
+        function [allseg,tab_sorted] = plot_psd_surface(obj,normalize_method)
             if ~exist('normalize_method','var')||isempty(normalize_method)
-               normalize_method = 1; 
+                normalize_method = 1;
             end
-            
-            allseg = get_psd(obj,[],normalize_method);
-              f = figure;
-            ax = axes(f);
+            tab = obj.roiTable;
+            tab_sorted = sortrows(tab,"Label");
+            all_times = [tab_sorted.TimeStart, tab_sorted.TimeEnd];
+            allseg = cell(size(all_times,1),1);
+            for i1 = 1:size(all_times,1)
+                allseg{i1} = obj.getCurrentVec(all_times(i1,:));
+            end
+            allseg = get_psd(obj,allseg,normalize_method);
+            if nargout==0
+                f = figure;
+                ax = axes(f);
+                surface(ax, allseg', "EdgeColor","None")
+            end
+            tab_sorted.psd = allseg;
         end
-        function [axout,out_mat] = plot_psd_mean(obj,normalize_method)
-             if ~exist('normalize_method','var')||isempty(normalize_method)
-               normalize_method = 1; 
+        function [axout,out_mat] = plot_psd_mean(obj,normalize_method,filter_flag)
+            if ~exist('normalize_method','var')||isempty(normalize_method)
+                normalize_method = 1;
             end
             
-            allseg = get_psd(obj,[],normalize_method);
-                  f = figure;
+            if ~exist('filter_flag','var')||isempty(filter_flag)
+                filter_flag = false;
+            end
+            
+            allseg = get_psd(obj,[],normalize_method,filter_flag);
+            f = figure;
             ax = axes(f);
             mean_vec = mean(allseg,1);
             std_vec = std(allseg,1);
@@ -1176,9 +1331,9 @@ Variables in table:
             inBetween = [mean_vec-std_vec, fliplr(mean_vec+std_vec)];
             fill(ax,x2, inBetween, 'g','FaceAlpha',0.1);
             hold on
-            plot(ax,x,mean_vec) 
+            plot(ax,x,mean_vec)
             
-%             ax.YLim = [0 125];
+            %             ax.YLim = [0 125];
             ax.XLim = [0 125];
             ax.XLabel.String = 'Frequency (kHz)';
             ax.YLabel.String = 'Relative Amplitue (A.U.)';
@@ -1187,7 +1342,7 @@ Variables in table:
             
             
             if nargout>0
-               axout = ax; 
+                axout = ax;
             end
             if nargout>1
                 out_mat = allseg;
@@ -1198,14 +1353,14 @@ Variables in table:
             %0-dont normlize
             %
             
-             if ~exist('allseg','var')||isempty(allseg)
-                 %Get all audio segment
+            if ~exist('allseg','var')||isempty(allseg)
+                %Get all audio segment
                 allseg = obj.getAllSegments;
-             end
-             if isempty(allseg)
-                 allseg={};
-             return
-             end
+            end
+            if isempty(allseg)
+                allseg={};
+                return
+            end
             
             if ~exist('normalize_method','var')||isempty(normalize_method)
                 normalize_method = 1;
@@ -1214,11 +1369,14 @@ Variables in table:
             if ~exist('filter_flag','var')||isempty(filter_flag)
                 filter_flag = false;
             end
+            %             filter_flag = true;
             
-           
             
             %Extract psd from all segment
-            allseg = cellfun(@obj.get_power_vector_wrapper,allseg,'UniformOutput',false);
+            noise_vec = obj.vec(1:2*2.5e5);
+            noise_vec = noise_vec-smooth(noise_vec,100);
+            anno_func = @(x) obj.get_power_vector_wrapper(x,noise_vec,filter_flag);
+            allseg = cellfun(anno_func,allseg,'UniformOutput',false);
             
             %Reshape to matrix
             allseg = cell2mat(allseg);
@@ -1233,7 +1391,7 @@ Variables in table:
             else
                 error('METHOD must be 1 or 2 but it was %d instead',normalize_method)
             end
-          
+            
             
             function mat = normlize_per_file(mat)
                 % freq_range = [20:100];
@@ -1265,7 +1423,7 @@ Variables in table:
             obj1.addRowsToTable(T2);
             
         end
-        function [valid_load, errIndo] = setAudioFile(obj,reload_flag,folder_name)
+        function [valid_load, errIndo] = setAudioFile(obj,reload_flag,folder_name,path_name_appnd)
             valid_load = false;
             errIndo = '';
             if ~exist('reload_flag','var')
@@ -1276,6 +1434,7 @@ Variables in table:
                 folder_name = [];
             end
             
+            
             if reload_flag
                 filename = obj.info.fileName;
                 
@@ -1283,6 +1442,10 @@ Variables in table:
                     pathname = folder_name;
                 else
                     pathname = obj.info.filePath;
+                end
+                
+                if exist('path_name_appnd','var') && ~isempty(path_name_appnd)
+                    pathname = fullfile(path_name_appnd,pathname);
                 end
                 
                 [~,newvec,newinfo,errIndo] = obj.loadAudioFile(filename,pathname);
@@ -1349,6 +1512,38 @@ Variables in table:
             clean_signal = clean_signal((num_noise_bins+1):end);
             
         end
+        function tab = getTableFromTruthVec(obj,logical_vector,time_range,fs,label) %TODO ! NOT READY
+            
+            
+            if ~exist('logical_vector','var')||isempty(logical_vector)
+                tab = audioClip.roiTableTemplate;
+                return
+            end
+            
+            if ~exist('time_range','var')||isempty(time_range)
+                time_range = obj.times;
+            end
+            
+            if ~exist('fs','var')||isempty(fs)
+                fs = obj.fs;
+            end
+            
+            
+            if ~exist('label','var')||isempty(label)
+                label = 'undefined_label';
+            end
+            
+            original_len_sec = diff(time_range);
+            min_syllable_length_milisec = 10;
+            
+            [tab, filtered_logical_vector]= create_table_from_logical_array(...
+                logical_vector,...
+                original_len_sec,...
+                min_syllable_length_milisec,...
+                fs);
+            
+            
+        end
         function vec = getProbabilityVector(obj,timeRange)
             % vec = getProbabilityVector(obj,timeRange)
             %Create a probability or logic vector
@@ -1393,20 +1588,20 @@ Variables in table:
                 if isfield(val,'local_snr')
                     ret.local_snr = val.local_snr;
                 end
-                  if isfield(val,'filtered_psd')
+                if isfield(val,'filtered_psd')
                     ret.filtered_psd = val.filtered_psd;
-                  end
-                 if isfield(val,'sig_amp')
+                end
+                if isfield(val,'sig_amp')
                     ret.sig_amp = val.sig_amp;
-                 end
-                  if isfield(val,'sig_psd')
+                end
+                if isfield(val,'sig_psd')
                     ret.sig_psd = val.sig_psd;
                 end
                 obj.obj_snr = ret;
                 
             end
         end
-
+        
         function ret = prepareTabForDeepPhenoObj(obj,saveOptions)
             if ~exist('saveOptions','var')
                 saveOptions = [];
@@ -1458,7 +1653,7 @@ Variables in table:
             this.roiTable = t;
         end
         
-        function [ret] = refresh_obj_snr(obj,calculate_sepratly_flag, filter_flag)
+        function [ret] = refresh_obj_snr(obj,calculate_sepratly_flag, filter_flag,labels_to_process)
             % Calculate local SNR for each label seperatly
             
             % info_table: a table specifing the important labels and the
@@ -1477,6 +1672,8 @@ Variables in table:
                 warning('The object is empty')
                 return
             end
+            
+            
             if isempty(obj.vec)
                 warning('No audio vector loaded')
                 return
@@ -1490,7 +1687,9 @@ Variables in table:
                 filter_flag = true;
             end
             
-          
+            if ~exist('labels_to_process','var')||isempty(labels_to_process)
+                labels_to_process = ["Low","subjectUSV","stimulusUSV", "USV-Auto"];
+            end
             
             
             audio_length = obj.audioLen_;
@@ -1502,11 +1701,12 @@ Variables in table:
             tab = obj.roiTable;
             all_labels = unique(tab.Label);
             num_all_labels = length(all_labels);
-%             labels_to_omit = ["Noise"];
-            labels_to_process = ["Low","subjectUSV","stimulusUSV"];
+            %             labels_to_omit = ["Noise"];
+            
+            %             labels_to_process = ["Noise","FN","Noise","TP_new_USV","sniffUSV","GT"];
             ommited_labels = all_labels(~contains(all_labels,labels_to_process));
             all_labels= all_labels(contains(all_labels,labels_to_process));
-           
+            
             num_labels = length(all_labels);
             
             variable_names = {'Label','TimeStart','TimeEnd','mean_snr','local_snr','filtered_psd','sig_amp','sig_psd'};
@@ -1548,7 +1748,7 @@ Variables in table:
                 summary_tab{ilabel,'filtered_psd'} = {ret_temp.filtered_psd};
                 sig_amp_temp = ret_temp.sig_amp;
                 if any(isnan(sig_amp_temp))
-                    aa=  1
+                    disp('there were nans in the sig amp')
                 end
                 summary_tab{ilabel,'sig_amp'} = {ret_temp.sig_amp};
                 summary_tab{ilabel,'sig_psd'} = {ret_temp.sig_psd};
@@ -1591,7 +1791,7 @@ Variables in table:
                 filtered_psd = [filtered_psd;summary_tab{itab,'filtered_psd'}{:}];
                 sig_amp = [sig_amp;summary_tab{itab,'sig_amp'}{:}];
                 sig_psd = [sig_psd;summary_tab{itab,'sig_psd'}{:}];
-                    
+                
             end
             all_data = table(labels,time_start,time_end,local_snr,filtered_psd,sig_amp,sig_psd,'VariableNames',{'Label','TimeStart','TimeEnd','local_snr','filtered_psd','sig_amp','sig_psd'});
             all_data = sortrows(all_data,'TimeStart');
@@ -1606,84 +1806,116 @@ Variables in table:
             obj.obj_snr = ret;
             
             function [ret, isi_times] = get_spectral_data(obj,tab,audio_length, filter_flag)
-                   %             tab(tab.Label='Noise',:) = [];
-            
-            if ~exist('filter_flag','var')||isempty(filter_flag)
-                filter_flag = false;
-            end
-            signal_requency_range = [tab.FrLow, tab.FrHigh];
-            signal_times = [tab.TimeStart,tab.TimeEnd];
-            if isempty(signal_times)
-                return
-            end
-            
-            signal_times(signal_times>audio_length) = audio_length;
-            
-            %validate times
-            if any(diff(signal_times,[],2)<=0)
-                warning('Something is wrong with the time table')
-            end
-            
-            
-            
-            isi_times = get_isi_times(signal_times,audio_length);
-            try
+                %             tab(tab.Label='Noise',:) = [];
+                
+                if ~exist('filter_flag','var')||isempty(filter_flag)
+                    filter_flag = false;
+                end
+                signal_requency_range = [tab.FrLow, tab.FrHigh];
+                signal_times = [tab.TimeStart,tab.TimeEnd];
+                if isempty(signal_times)
+                    return
+                end
+                
+                signal_times(signal_times>audio_length) = audio_length;
+                
+                %validate times
+                if any(diff(signal_times,[],2)<=0)
+                    warning('Something is wrong with the time table')
+                end
+                
+                
+                
+                %             isi_times = get_isi_times(signal_times,audio_length);
+                [isi_times_before,isi_times_after] = get_isi_times(signal_times,audio_length);
+                
+                %             try
                 audio_vec = audioClip.vecSegment(obj,signal_times);
+                
+                %smooth data
+                smooth_func = @(x) x-smooth(x,100);
+                if ~iscell(audio_vec)
+                    audio_vec = {audio_vec} ;
+                end
+                audio_vec = cellfun(smooth_func, audio_vec,'UniformOutput',false);
                 % if there is only one syllable, the output is a double array,
                 % but this has to be a cell array
                 if ~iscell(audio_vec)
-                   audio_vec = {audio_vec};
+                    audio_vec = {audio_vec};
                 end
-            catch ME
-                disp(ME.message)
+                %             catch ME
+                %                 disp(ME.message)
+                %             end
+                noise_vec_before = audioClip.vecSegment(obj,isi_times_before);
+                noise_vec_after = audioClip.vecSegment(obj,isi_times_after);
+                if ~iscell(noise_vec_before)
+                    noise_vec_before = {noise_vec_before} ;
+                end
+                if ~iscell(noise_vec_after)
+                    noise_vec_after = {noise_vec_after} ;
+                end
+                
+                if filter_flag
+                    % band filter each signal
+                    
+                    %Remove outliers and determine filter range
+                    frlow_temp = filloutliers(tab.FrLow','clip','quartiles');
+                    frhigh_temp = filloutliers(tab.FrHigh','clip','quartiles');
+                    min_fr = max([min(frlow_temp),1]);
+                    max_fr = min([max(frhigh_temp),120000]);
+                    
+                    %filter function
+                    
+                    
+                    filter_func = @(x) bandpass(x,[min_fr,max_fr],obj.fs);
+                    
+                    %filter the audio and noise signals before calculating
+                    audio_vec = cellfun(filter_func,audio_vec,'UniformOutput',false);
+                    
+                    noise_vec_before = cellfun(filter_func,noise_vec_before,'UniformOutput',false);
+                    noise_vec_after = cellfun(filter_func,noise_vec_after,'UniformOutput',false);
+                    %                noise_vec = cellfun(filter_func,noise_vec,'UniformOutput',false);
+                end
+                %get_amp = @(y) sqrt(mean(y.^2));
+                %get_amp = @(y) bandpower(y,2.5e5,[0 2.5e5/2]);
+                get_amp = @(y) rms(y)^2;
+                %             get_amp = @(y) db(periodogram(y,kaiser(length(y),38) ,obj.fs*2-1,obj.fs));
+                
+                signal_noise_db = (cellfun(get_amp,audio_vec,'UniformOutput',true));
+                %             signal_noise_db = cat(2,signal_noise_db{:});
+                
+                %                a==1
+                
+                %             noise_db =  (cellfun(get_amp,noise_vec,'UniformOutput',true));
+                noise_db_before =  (cellfun(get_amp,noise_vec_before,'UniformOutput',true));
+                noise_db_after =  (cellfun(get_amp,noise_vec_after,'UniformOutput',true));
+                %             noise_db = cat(2,noise_db{:});
+                
+                noise_db_before(isnan(noise_db_before)) = mean(noise_db_before,'omitnan'); %Fill missing values
+                noise_db_after(isnan(noise_db_after)) = mean(noise_db_after,'omitnan'); %Fill missing values
+                
+                ret.sig_amp = signal_noise_db;
+                
+                ret.local_snr = get_local_snr(signal_noise_db,noise_db_before,noise_db_after);
+                
+                ret.sig_psd = obj.get_psd(audio_vec,1);
+                
+                noise_psd_before = obj.get_psd(noise_vec_before,1);
+                noise_psd_after = obj.get_psd(noise_vec_after,1);
+                noise_psd = mean(cat(3,noise_psd_before,noise_psd_after),3);
+                
+                nan_inds = any(isnan(noise_psd),2);
+                if sum(nan_inds)>0
+                    noise_psd(nan_inds,:) = repmat(mean(noise_psd,1,'omitnan'),[sum(nan_inds),1]); %Fill missing values
+                end
+                ret.filtered_psd = get_local_psd(ret.sig_psd,noise_psd);
+                
+                ret.mean_snr =  get_weighted_mean(audio_vec,signal_noise_db,noise_vec_before,noise_db_before,...
+                    noise_vec_after,noise_db_after);
+                
             end
-            noise_vec = audioClip.vecSegment(obj,isi_times);
-               
-            if filter_flag
-               % band filter each signal 
-               
-               %Remove outliers and determine filter range
-               frlow_temp = filloutliers(tab.FrLow','clip','quartiles');
-               frhigh_temp = filloutliers(tab.FrHigh','clip','quartiles');
-               min_fr = min(frlow_temp);
-               max_fr = max(frhigh_temp);
-               
-               %filter function  
-               
-               
-               filter_func = @(x) bandpass(x,[min_fr,max_fr],obj.fs);
-               
-               %filter the audio and noise signals before calculating 
-               audio_vec = cellfun(filter_func,audio_vec,'UniformOutput',false);
-               noise_vec = cellfun(filter_func,noise_vec,'UniformOutput',false);
-            end
-            %get_amp = @(y) sqrt(mean(y.^2));
-            %get_amp = @(y) bandpower(y,2.5e5,[0 2.5e5/2]);
-            %get_amp = @(y) rms(y)^2;
-            get_amp = @(y) db(periodogram(y,kaiser(length(y),38) ,obj.fs*2-1,obj.fs));
             
-            signal_noise_db = (cellfun(get_amp,audio_vec,'UniformOutput',true));
-            noise_db =  (cellfun(get_amp,noise_vec,'UniformOutput',true));
-            noise_db(isnan(noise_db)) = mean(noise_db,'omitnan'); %Fill missing values
-           
-            
-            ret.sig_amp = signal_noise_db;
-            
-            ret.local_snr = get_local_snr(signal_noise_db,noise_db);
-            
-            ret.sig_psd = obj.get_psd(audio_vec,1);
-            noise_psd = obj.get_psd(noise_vec,1);
-            nan_inds = any(isnan(noise_psd),2);
-            if sum(nan_inds)>0
-                noise_psd(nan_inds,:) = repmat(mean(noise_psd,1,'omitnan'),[sum(nan_inds),1]); %Fill missing values
-            end
-            ret.filtered_psd = get_local_psd(ret.sig_psd,noise_psd);
-            
-            ret.mean_snr =  get_weighted_mean(audio_vec,signal_noise_db,noise_vec,noise_db);
-
-            end
-            
-            function mean_snr = get_weighted_mean(audio_vec,signal_noise_db,noise_vec,noise_db)
+            function mean_snr = get_weighted_mean(audio_vec,signal_noise_db,noise_vec_before,noise_db_before,noise_vec_after,noise_db_after)
                 numels_signal = cellfun(@numel,audio_vec);
                 
                 % remove files with problems
@@ -1691,47 +1923,61 @@ Variables in table:
                 numels_signal(empty_ind,:) = [];
                 signal_noise_db(empty_ind) = [];
                 
-                weight_signal = numels_signal./sum(numels_signal);
+                weight_signal = (numels_signal./sum(numels_signal))';
                 wighted_mean_signal = sum(signal_noise_db.*weight_signal);
                 
-                numels_noise = cellfun(@numel,noise_vec);
-                weight_noise = numels_noise./sum(numels_noise);
-                wighted_mean_noise = sum(noise_db.*weight_noise);
+                numels_noise_after = cellfun(@numel,noise_vec_after);
+                weight_noise_after = (numels_noise_after./sum(numels_noise_after))';
+                
+                numels_noise_before = cellfun(@numel,noise_vec_before);
+                weight_noise_before = (numels_noise_before./sum(numels_noise_before))';
+                
+                wighted_mean_noise_before = sum(noise_db_before.*weight_noise_before);
+                wighted_mean_noise_after = sum(noise_db_after.*weight_noise_after);
                 
                 
-                mean_snr = (wighted_mean_signal-wighted_mean_noise)/wighted_mean_noise;
+                
+                mean_snr = zeros(size(wighted_mean_signal));
+                for i = 1:size(wighted_mean_signal,2)
+                    mean_noise = mean([wighted_mean_noise_before(i),wighted_mean_noise_after(i)]);
+                    mean_snr(i) = (wighted_mean_signal(i)-mean_noise)/mean_noise;
+                    
+                end
+                %                 (wighted_mean_signal-wighted_mean_noise)/wighted_mean_noise;
             end
-            function local_snr = get_local_snr(sig,isi)
+            function local_snr = get_local_snr(sig,isi_before, isi_after)
                 sz = size(sig,1);
                 local_snr = zeros(sz,1);
                 for i1 = 1:sz
-                    local_noise = mean(isi(i1:i1+1));
+                    %                     local_noise = mean(isi(i1:i1+1));
+                    local_noise = mean([isi_before(i1),isi_after(i1)]);
                     local_snr(i1) = (sig(i1) - local_noise)/local_noise;
                 end
                 
             end
-                function local_psd = get_local_psd(sig,isi)
+            function local_psd = get_local_psd(sig,isi)
                 sz = size(sig,1);
                 local_psd = zeros(sz,125);
                 for i1 = 1:sz
-                    local_noise = mean(isi(i1:i1+1,:));
+                    local_noise = isi(i1,:);
                     local_psd(i1,:) = (sig(i1,:) - local_noise);
                     if any(isnan(local_psd(i1,:)))
-                       a = 1; 
+                        a = 1;
                     end
                 end
                 
             end
-            function isi_times = get_isi_times(signal_times,audio_length)
+            function isi_times = get_isi_times_v2(signal_times,audio_length)
                 sz = size(signal_times,1);
+                k = 5;
                 isi_times = [signal_times(1:sz-1,2),signal_times(2:sz,1)];
                 start_seg(2) = max(signal_times(1,1),0);
-                start_seg(1) = max(start_seg(2)-20,0);
+                start_seg(1) = max(start_seg(2)-k,0);
                 if diff(start_seg)<-0
                     start_seg = signal_times(1,:);
                 end
                 
-                end_seg(2) = min(signal_times(end,2)+20,audio_length);
+                end_seg(2) = min(signal_times(end,2)+k,audio_length);
                 end_seg(1) = min(signal_times(end,2),audio_length);
                 if diff(end_seg)<=0
                     end_seg =signal_times(end,:);
@@ -1740,72 +1986,218 @@ Variables in table:
                 isi_times = [start_seg;isi_times;end_seg];
                 
             end
+            function [isi_times_before, isi_times_after] = get_isi_times(signal_times,audio_length)
+                sz = size(signal_times,1);
+                k = 5;
+                
+                isi_times_before = zeros(size(signal_times));
+                isi_times_after =  zeros(size(signal_times));
+                min_val = 0;
+                
+                
+                
+                for i = 1:sz
+                    diff_clip = diff(signal_times(i,:));
+                    isi_times_before(i,1) = max(signal_times(i,1)-k*diff_clip,min_val);
+                    isi_times_before(i,2) = signal_times(i,2);
+                    min_val = signal_times(i,2);
+                    
+                    if i+1<=sz
+                        max_val = signal_times(i+1,1);
+                    else
+                        max_val = audio_length;
+                    end
+                    isi_times_after(i,1) = signal_times(i,2);
+                    isi_times_after(i,2) = min(signal_times(i,2)+k*diff_clip,max_val);
+                    
+                    
+                end
+                
+                
+            end
             
-     
+            
         end
-        function plot_current_vec_with_vocalization(obj, time_range, labels)
+        
+        function plot_current_vec_with_vocalization_2(obj, ax, labels)
+            f = plot_current_vec_with_vocalization(obj,[], [],labels);
+            
+            labels = {'Low','subjectUSV','Signal'};
+            colors = {[1 0 0],[0 1 0],[0 0 0]};
+            color_mapping = containers.Map(labels,colors);
+            
+            
+            xlims = ax.XLim;
+            ax.Title.String = "";
+            ax1 = f.Children(4);
+            ax2 = f.Children(3);
+            ax2.XLim = xlims;
+            axcp = copyobj(ax, f);
+            set(axcp,'Position',get(ax1,'position'));
+            delete(ax1);
+            lines = ax2.Children;
+            names = get(lines,'DisplayName');
+            rects = findobj(ax.Children,'Type','images.roi.Rectangle');
+            for i1 = 1:numel(lines)
+                labels_name = names{i1};
+                color = color_mapping(labels_name);
+                lines(i1).Color = color;
+                
+                for j = 1:numel(rects)
+                    rect = rects(j) ;
+                    Label = rect.Label;
+                    Label = strsplit(Label,' ');
+                    Label = Label{1};
+                    rect.Label = Label;
+                    if strcmp(labels_name, Label)
+                        rect.Color = color;
+                    end
+                end
+                
+            end
+            axes = findobj(f, 'Type','axes');
+            linkaxes(axes,'x')
+            
+        end
+        
+        
+        function fig = plot_current_vec_with_vocalization(obj, time_range, vec_spect,labels,obj2)
             if ~exist('time_range','var')||isempty(time_range)
                 time_range = obj.times;
             end
-             if ~exist('labels','var')
+            if ~exist('labels','var')
                 labels = [];
-             end
-             
-            [vec_,t] = obj.getCurrentVec(time_range);
-            tab = obj.filtered_roi_table(labels,time_range)  ;
-            voc_times = [tab.TimeStart,tab.TimeEnd];
-            t_voc = nan(size(t));
-            for it = 1:size(voc_times,1)
-                t_voc((voc_times(it,1)<t) & (t<=voc_times(it,2))) = vec_((voc_times(it,1)<t) & (t<=voc_times(it,2)));
             end
-            f = figure;
-%             ax = f.CurrentAxes;
-            plot( t,vec_)
-            hold on
-            plot( t,t_voc)
-            hold off
-            title(obj.name)
-            ax = f.CurrentAxes;
-            ax.XLabel.String = 'Time (sec)';
-%             ax.YLabel.String = ''
+            
+            if ~iscell(labels)
+                labels = {labels} ;
+            end
+            
+            [vec_,t] = obj.getCurrentVec(time_range);
+            if ~exist('vec_spect','var')||isempty(vec_spect)
+                vec_spect = vec_;
+            end
+            
+            if ~exist('obj2','var')
+                obj2 = [];
+            end
+            
+            num_labels = size(labels,1);
+            
+            
+            fig = figure;
+            
+            
+            k = size(vec_spect,2)+1;
+            
+            for ispect = 1:k-1
+                ax(ispect) = subplot(k,1,ispect);
+                ax1 = ax(ispect);
+                [s,f,t_spect,ps] = spectrogram(vec_spect(:,ispect),obj.window,obj.overlap,obj.fft,obj.fs,'yaxis');
+                
+                %             [s,f,t_spect] = melSpectrogram(vec_spect(:,ispect),obj.fs, "FrequencyRange",[0,50],...
+                %             "Window",hamming(round(obj.fs)), "OverlapLength",round(obj.fs*0.95));
+                %             v = [diff(vec_spect(:,ispect));0];
+                %             [s,f] = cwt(v,obj.fs,"FrequencyLimits",[0,50]);
+                n_bins = numel(vec_spect(:,ispect))-1;
+                %             t_spect = (0:n_bins)/obj.fs;
+                t_spect = t_spect + t(1);
+                s = 10*log(abs(s));
+                surface(ax1,t_spect,f,s,'EdgeColor','none')
+                %             ax1.YLim = [100,80000];
+                ax1.YLim = obj.ylims;
+                ax1.YLabel.String = 'Frequency (kHz)';
+            end
+            ax2 = subplot(k,1,ispect+1);
+            p_line = plot(ax2, t,vec_);
+            p_line.DisplayName = 'Signal';
+            
+            ax2.XLabel.String = 'Time (sec)';
+            for i1 = 1:size(labels,2)
+                offset = 0.05*i1;
+                lable_in = labels{i1};
+                if ~isempty(lable_in)
+                    p_out(i1) = plot_vec([obj,obj2], ax2, lable_in,time_range,t,vec_+offset);
+                    p_out(i1).DisplayName = lable_in;
+                end
+                legend()
+                
+            end
+            linkaxes([ax,ax2],'x')
+            a = sgtitle(obj.name);
+            a.Interpreter = 'none';
+            function p_out = plot_vec(obj, ax, label,time_range,t,vec_)
+                n_obj = numel(obj);
+                voc_times = [];
+                trigger_time = obj(1).triggerTime;
+                for j=1:n_obj
+                    tab_temp = obj(j).filtered_roi_table(label,time_range+obj(j).triggerTime-trigger_time);
+                    voc_times_temp = [tab_temp.TimeStart,tab_temp.TimeEnd]-obj(j).triggerTime+trigger_time;
+                    voc_times = [voc_times;voc_times_temp]; %#ok
+                    
+                end
+                
+                
+                
+                t_voc = nan(size(t));
+                
+                for it = 1:size(voc_times,1)
+                    t_voc((voc_times(it,1)<t) & (t<=voc_times(it,2))) = vec_((voc_times(it,1)<t) & (t<=voc_times(it,2)));
+                end
+                
+                
+                %             ax = f.CurrentAxes;
+                
+                hold on
+                p_out = plot(ax, t,t_voc);
+                hold off
+                
+            end
+            %             ax.YLabel.String = ''
         end
         function denoised=get_power_vector_wrapper(obj,signal_data,noise_data,filter_flag)
-                
-           
-                normalization_frequency_range = [40,120];
-                if ~exist('filter_flag','var')
-                    filter_flag = false;
-                end
-                
-                
-                %Get power spectral density of the signal and the noise
-                frequency_range = [1,125];
-                
-                signal_b = get_power_vector(signal_data,frequency_range);
-                if filter_flag
-                noise_b = get_power_vector(noise_data,frequency_range);
-                else
-                   noise_b = zeros(size(signal_b)) ;
-                end
-                
-                %Subtract
-                denoised = signal_b-noise_b;
-                
-                
-                %Normlize
-                min_val = min(denoised(normalization_frequency_range(1):normalization_frequency_range(end)),[],"all");
-                max_val = max(denoised(normalization_frequency_range(1):normalization_frequency_range(end)),[],"all");
-               
-                denoised=(denoised-min_val)/(max_val-min_val);
-              
-                
+            
+            
+            %                 normalization_frequency_range = [40,120];
+            normalization_frequency_range = [0,120];
+            if ~exist('filter_flag','var')
+                filter_flag = false;
             end
-              
-        function [new_tab,old_tab] = refresh_scores(obj)
+            
+            
+            %Get power spectral density of the signal and the noise
+            frequency_range = [0,125];
+            signal_data = signal_data-smooth(signal_data,100);
+            signal_b = get_power_vector(signal_data,frequency_range);
+            
+            if filter_flag
+                noise_b = get_power_vector(noise_data,frequency_range);
+            else
+                noise_b = zeros(size(signal_b)) ;
+            end
+            
+            %Subtract
+            denoised = signal_b-noise_b;
+            
+            
+            %Normlize
+            min_val = min(denoised(normalization_frequency_range(1)+1:normalization_frequency_range(end)),[],"all");
+            max_val = max(denoised(normalization_frequency_range(1)+1:normalization_frequency_range(end)),[],"all");
+            
+            denoised=(denoised-min_val)/(max_val-min_val);
+            %clip
+            denoised(denoised>1) = 1;
+            
+            
+        end
+        
+        function [new_tab,old_tab] = refresh_scores(obj,prob_vec)
             
             t = obj.roiTable;
             old_t = t;
-            prob_vec = obj.probability_vector.Probability;
+            if ~exist('prob_vec','var')||isempty(prob_vec)
+                prob_vec = obj.probability_vector.Probability;
+            end
             tab.Onsets = t.TimeStart;
             tab.Offsets = t.TimeEnd;
             fs_new = (numel(prob_vec))/obj.audioLen;
@@ -1823,35 +2215,38 @@ Variables in table:
             end
         end
         
+        function reset_detection_table(obj, new_detection_params)
+            % TODO: recrteate detection logical vector from probability
+            % vector. recreate detection table, problem- to detect
+            % frequencty, we need features, so it must also be extracted.
+            if ~exist('new_detection_params','var')||isempty(new_detection_params)
+                new_detection_params = obj.detectionParameters;
+            end
+            if isfield(new_detection_params,'th')
+                th = new_detection_params.th;
+            else
+                th = obj.detectionParameters.th;
+            end
+            
+            if isfield(new_detection_params,'smoothingK')
+                smoothingK = new_detection_params.smoothingK;
+            else
+                smoothingK = obj.detectionParameters.smoothingK;
+            end
+            
+            if isfield(new_detection_params,'label')
+                label = new_detection_params.label;
+            else
+                label = obj.detectionParameters.label;
+            end
+            
+            
+            
+        end
         
         function s = saveobj(this)
-            s.info          = this.info         ;
-            s.vec           = []                ;
-            s.times_        = this.times_       ;
-            s.fs            = this.fs           ;
-            s.window        = this.window       ;
-            s.overlap       = this.overlap      ;
-            s.fft           = this.fft          ;
-            s.threshold     = this.threshold    ;
-            s.clim          = this.clim         ;
-            s.climMode      = this.climMode     ;
-            s.path          = this.path         ;
-            s.stft          = []                ;
-            s.cyclica       = []                ;
-            s.timeVec       = []                ;
-            s.psd           = []                ;
-            
-            s.addedTypeList = this.addedTypeList;
-            s.emptyFlag     = this.emptyFlag    ;
-            s.roiTable      = this.roiTable     ;
-            s.sourceType    = this.sourceType   ;
-            s.ylims         = this.ylims        ;
-            s.absTime       = this.absTime      ;
-            s.triggerTime   = this.triggerTime  ;
-            s.load_audio_vector_flag = this.load_audio_vector_flag;
-            s.audioLen      = this.audioLen;
-            s.obj_snr       = this.obj_snr;
-            
+            s = this;
+            s.vec = [];
         end
         
     end
@@ -1860,23 +2255,23 @@ Variables in table:
         function tab_out = construct_roi_from_timestamps(times, Label)
             tab_out = audioClip.roiTableTemplate;
             if ~exist('times','var')||isempty(times)
-               return
+                return
             end
             if ~exist('labels','var')||isempty(Label)
-               Label =  'USV';
+                Label =  'USV';
             end
             if istable(times)
-               times = table2array(times) ;
+                times = table2array(times) ;
             end
             sz = size(times,1);
             sz_labels = size(Label,1);
             if sz_labels>1 && size(label,1)~=sz
-               warning ('The number of labels must be 1 or match the height of the times but it was %d instead',sz_labels)
-               return
+                warning ('The number of labels must be 1 or match the height of the times but it was %d instead',sz_labels)
+                return
             elseif sz_labels==1
                 Label = repmat(string(Label),sz,1);
             end
-         
+            
             TimeStart = times(:,1);
             TimeEnd = times(:,2);
             FrLow = nan(sz,1);
@@ -1900,7 +2295,7 @@ Variables in table:
             if isempty(obj.vec)
                 return
             end
-
+            
             if ~exist('timeRange','var')
                 timeRange = obj.times;
             end
@@ -1941,16 +2336,16 @@ Variables in table:
             
             sz = size(time_range,1);
             if sz==1
-         
-            time_diff = diff(time_range);
-            n_points = round(time_diff*fs_)+1;
-            timevec = linspace(time_range(1),time_range(2),n_points);
-            timevec(end) = [];
+                
+                time_diff = diff(time_range);
+                n_points = round(time_diff*fs_)+1;
+                timevec = linspace(time_range(1),time_range(2),n_points);
+                timevec(end) = [];
             else
                 all_vec = cell(sz,1);
                 for i1 = 1:sz
                     all_vec{i1} = audioClip.get_time_vec(time_range(i1,:),fs_);
-
+                    
                 end
                 timevec = all_vec;
             end
@@ -1965,7 +2360,9 @@ Variables in table:
                     '*.wav','Audio File (.*wav)';...
                     '*.mat','MATLAB File (*.mat)'});
             end
-            
+            if isstring(file)
+                file = char(file) ;
+            end
             
             if file==0
                 warning('No file was chocen, returning an empty audioClip file')
@@ -1979,8 +2376,11 @@ Variables in table:
                         case '.mat'
                             readfile = matfile(fullfile(path,file));
                             classesInVar = whos(readfile);
-                            indDouble = find(strcmpi('double',{classesInVar.class}),1,'first');
-                            vec  = eval(['readfile.',classesInVar(indDouble).name]);
+                            indData = find(strcmpi('data',{classesInVar.name}),1,'first');
+                            if isempty(indData) % look for a variable data, if it doesnt exist, look for the first double
+                                indData = find(strcmpi('double',{classesInVar.class}),1,'first');
+                            end
+                            vec  = eval(['readfile.',classesInVar(indData).name]);
                     end
                     info = getRecodringDetails(file,path,f);
                 catch ME
@@ -2028,126 +2428,134 @@ Variables in table:
         end
         
         
+        %         function this = loadobj(S)
+        %             %Determine if to load audio vector (true) or only roi table (false)
+        %             %             flags = false;
+        %             if ~isfield(S,'load_audio_vector_flag')
+        %                 flags = false;
+        %             else
+        %                 flags = S.load_audio_vector_flag;
+        %             end
+        %
+        %             if isstruct(S)
+        %                 path = fullfile(S.path);
+        %                 if ~isfield(S,'sourceType')
+        %                     S.sourceType = 'wav' ;
+        %                 end
+        %                 if ~isfield(S,'ylims')
+        %                     S.ylims = [];
+        %                 end
+        %
+        %                 if ~isfield(S,'absTime')
+        %                     S.absTime = 0;
+        %                 end
+        %
+        %                 if ~isfield(S,'clim')
+        %                     S.clim = [];
+        %                 end
+        %
+        %                 if ~isfield(S,'climMode')
+        %
+        %                     S.climMode = 'auto';
+        %                 end
+        %                 if ~isfield(S,'triggerTime')
+        %                     S.triggerTime = 0;
+        %                 end
+        %                 if ~isfield(S,'audioLen')
+        %                     S.audioLen = [];
+        %                 end
+        %
+        %                 %Clear/fix Score from roi table
+        %                 roitab = S.roiTable;
+        %
+        %                 if ~contains('Score',roitab.Properties.VariableNames)
+        %                     roitab.Score = nan(size(roitab,1),1);
+        %                 else
+        %                     if size(roitab.Score,2) > 1
+        %                         roitab.Score = nan(size(roitab,1),1);
+        %                     end
+        %                 end
+        %
+        %                 if ~isfield(S,'obj_snr')
+        %                     S.obj_snr = [];
+        %                 end
+        %
+        %
+        %                 S.roiTable = roitab;
+        %
+        %                 %Make sure file name has right extention
+        %                 [~,fileName,ext] = fileparts(path);
+        %                 if isempty(ext)
+        %                     ext = S.sourceType ;
+        %                     path = [path,ext];
+        %                 else
+        %                     if ~strcmpi(ext(2:end),S.sourceType)
+        %                         warning('File extention (%s) and sourceType (%s) are not the same,\nChaging to extention',ext,S.sourceType)
+        %                         S.sourceType = ext(2:end);
+        %                     end
+        %                 end
+        %
+        %                 %Search for the file with full path, if it cant be found,
+        %                 %try to look for the file in current folder
+        %                 if ~isfile(path)
+        %                     %if the file was not found then search for the file
+        %                     filep = path;
+        %                     filepSplit = regexp(filep,'\','split');
+        %                     while size(filepSplit,2)>1&& ~isfile(filep)
+        %                         filepSplit = regexp(filep,'\','split');
+        %                         filep =join(filep(2:end),'\');
+        %                     end
+        %                     path = filep;
+        %                 end
+        %                 if ~isfile(path)
+        %
+        %
+        %
+        %                     path = fullfile(pwd,[fileName,'.',strrep(ext,'.','')]);
+        %                     if isfile(path)
+        %                         info = getRecodringDetailsFemales(fileName,path);
+        %                         S.info = info;
+        %                     end
+        %                 end
+        %                 if ~flags %Dont load the vector, only the roi table
+        %                     S.vec = [];
+        %                     %                     info = getRecodringDetails([fileName,ext],pwd,fileName);
+        %                     %                     S.info = info;
+        %                     this = audioClip(S);
+        %                     return
+        %                 end
+        %
+        %                 try
+        %                     switch lower(S.sourceType)
+        %
+        %                         case 'wav'
+        %                             vec = audioread(path) ;
+        %                         case 'mat'
+        %                             readfile = matfile(path);
+        %                             classesInVar = whos(readfile);
+        %                             indDouble = find(strcmpi('double',{classesInVar.class}),1,'first');
+        %                             vec  = eval(['readfile.',classesInVar(indDouble).name]);
+        %                         otherwise
+        %                             error('Expected sourceType to be .mat or .wav but instead it was %s',S.sourceType)
+        %                     end
+        %                     S.vec = vec;
+        %                     this         = audioClip(S);
+        %
+        %
+        %                 catch
+        %
+        %                     this = audioClip.loading_options();
+        %
+        %                 end
+        %             end
+        %         end
         function this = loadobj(S)
-            %Determine if to load audio vector (true) or only roi table (false)
-            %             flags = false;
-            if ~isfield(S,'load_audio_vector_flag')
-                flags = false;
+            if isstruct(S)
+                this = audioClip(S);
             else
-                flags = S.load_audio_vector_flag;
+                this = S;
             end
             
-            if isstruct(S)
-                path = fullfile(S.path);
-                if ~isfield(S,'sourceType')
-                    S.sourceType = 'wav' ;
-                end
-                if ~isfield(S,'ylims')
-                    S.ylims = [];
-                end
-                
-                if ~isfield(S,'absTime')
-                    S.absTime = 0;
-                end
-                
-                if ~isfield(S,'clim')
-                    S.clim = [];
-                end
-                
-                if ~isfield(S,'climMode')
-                    
-                    S.climMode = 'auto';
-                end
-                if ~isfield(S,'triggerTime')
-                    S.triggerTime = 0;
-                end
-                if ~isfield(S,'audioLen')
-                    S.audioLen = [];
-                end
-                
-                %Clear/fix Score from roi table
-                roitab = S.roiTable;
-                
-                if ~contains('Score',roitab.Properties.VariableNames)
-                    roitab.Score = nan(size(roitab,1),1);
-                else
-                    if size(roitab.Score,2) > 1
-                        roitab.Score = nan(size(roitab,1),1);
-                    end
-                end
-                
-                if ~isfield(S,'obj_snr')
-                    S.obj_snr = [];
-                end
-                
-                
-                S.roiTable = roitab;
-                
-                %Make sure file name has right extention
-                [~,fileName,ext] = fileparts(path);
-                if isempty(ext)
-                    ext = S.sourceType ;
-                    path = [path,ext];
-                else
-                    if ~strcmpi(ext(2:end),S.sourceType)
-                        warning('File extention (%s) and sourceType (%s) are not the same,\nChaging to extention',ext,S.sourceType)
-                        S.sourceType = ext(2:end);
-                    end
-                end
-                
-                %Search for the file with full path, if it cant be found,
-                %try to look for the file in current folder
-                if ~isfile(path)
-                    %if the file was not found then search for the file
-                    filep = path;
-                    filepSplit = regexp(filep,'\','split');
-                    while size(filepSplit,2)>1&& ~isfile(filep)
-                        filepSplit = regexp(filep,'\','split');
-                        filep =join(filep(2:end),'\');
-                    end
-                    path = filep;
-                end
-                if ~isfile(path)
-                    
-                    
-                    
-                    path = [pwd,'\',fileName,ext];
-                    if isfile(path)
-                        info = getRecodringDetails([fileName,'.',ext],pwd,fileName);
-                        S.info = info;
-                    end
-                end
-                if ~flags %Dont load the vector, only the roi table
-                    S.vec = [];
-                    %                     info = getRecodringDetails([fileName,ext],pwd,fileName);
-                    %                     S.info = info;
-                    this = audioClip(S);
-                    return
-                end
-                
-                try
-                    switch lower(S.sourceType)
-                        
-                        case 'wav'
-                            vec = audioread(path) ;
-                        case 'mat'
-                            readfile = matfile(path);
-                            classesInVar = whos(readfile);
-                            indDouble = find(strcmpi('double',{classesInVar.class}),1,'first');
-                            vec  = eval(['readfile.',classesInVar(indDouble).name]);
-                        otherwise
-                            error('Expected sourceType to be .mat or .wav but instead it was %s',S.sourceType)
-                    end
-                    S.vec = vec;
-                    this         = audioClip(S);
-                    
-                    
-                catch
-                    
-                    this = audioClip.loading_options();
-                    
-                end
-            end
         end
     end
 end

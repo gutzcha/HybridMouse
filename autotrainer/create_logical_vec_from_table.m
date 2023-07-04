@@ -1,4 +1,4 @@
-function [truth_vec, error_flag] = create_logical_vec_from_table(tab,total_len,fs,type)
+function [truth_vec, error_flag] = create_logical_vec_from_table(tab,total_len,fs,type,total_len_bin)
 %create_logical_vec_from_csv(tab,total_len,fs)
 %  Create a logical vector from a table
 %{
@@ -29,13 +29,17 @@ if ~exist('type','var')
 end
 
 %If the table is empty, return an array of zeros
-total_len_bin = ceil(total_len*fs);
+if ~exist('total_len_bin','var')||isempty(total_len_bin)
+    total_len_bin = ceil(total_len*fs);
+end
+
 if isempty(tab)||(type=="noise")
     truth_vec = false(1,total_len_bin);
     return
 end
 
 %Check table for error and remove bad lines
+tab(tab>total_len) = total_len;
 error_flag = check_input(tab,total_len);
 if error_flag.value
     bad_lines = tab(error_flag.ind_to_remove,:);
@@ -46,6 +50,7 @@ syl_onsets = tab(:,1);
 syl_offsets = tab(:,2);
 
 temp_mat_bins = floor([syl_onsets,syl_offsets]*fs); %Abs syl onset and offset in bins
+
 num_of_syllables = size(temp_mat_bins,1);
 truth_vec = false(1,total_len_bin); %Total number of bins is = lenght of output
 

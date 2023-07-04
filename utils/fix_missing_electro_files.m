@@ -11,14 +11,14 @@ function log = fix_missing_electro_files(tab_in)
 sz = size(tab_in,1);
 log = cell(sz,1);
 for i1 = 1:sz
-    try
+%     try
         fprintf('Processing file num %d of %d\n', i1, sz)
         all_operations(tab_in(i1,:))
-    catch ME
-        warning('File %d, error msg: %s\n',i1, ME.message)
-       log{i1,1} = ME.message;
-        continue
-    end
+%     catch ME
+%         warning('File %d, error msg: %s\n',i1, ME.message)
+%        log{i1,1} = ME.message;
+%         continue
+%     end
 
 %         all_operations(tab_in(i1,:))
 end

@@ -1,10 +1,10 @@
-function train_test_ds = create_LabeledAudioDatastore(data_folder,signal_noise_ds)
+function train_test_ds = create_LabeledAudioDatastore(data_folder,signal_noise_ds,params)
 
 signal_ds_main = signal_noise_ds.signal_ds_main;
 noise_ds_main = signal_noise_ds.noise_ds_main;
 
-ds_train = LabeledAudioDatastore(signal_ds_main.train,noise_ds_main.train);
-ds_test = LabeledAudioDatastore(signal_ds_main.test,noise_ds_main.test);
+ds_train = LabeledAudioDatastore(signal_ds_main.train,noise_ds_main.train,params);
+ds_test = LabeledAudioDatastore(signal_ds_main.test,noise_ds_main.test,params);
 
 train_test_ds.ds_train = ds_train;
 train_test_ds.ds_test = ds_test;
