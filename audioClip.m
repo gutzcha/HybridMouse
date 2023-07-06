@@ -747,6 +747,10 @@ Variables in table:
                 Sig_psd = nan(sz,125);
                 Filtered_psd = nan(sz,125);
             end
+            if isscalar(Filtered_psd)
+                 Filtered_psd = nan(sz,125);
+            end
+            
             
             Local_SNR = num2cell(Local_SNR);
             Sig_AMP = num2cell(Sig_AMP);
