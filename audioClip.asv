@@ -2329,7 +2329,12 @@ Variables in table:
             tab_out = [tab_out;tab_temp];
             
         end
-        
+        function quickSave(this,path)
+           if ~exist('path','var') || isempty(path)
+               path = this.object_save_path;
+               if isem
+           end
+        end
         function [vecseg, all_inds] = vecSegment(obj,timeRange,fs)
             vecseg = [];
             all_inds = [];
@@ -2594,7 +2599,13 @@ Variables in table:
         %                 end
         %             end
         %         end
-        function this = loadobj(S)
+        function this = loadobj(S, object_save_path)
+            if ~exist('object_save_path','var')||isempty(object_save_path)
+               S.object_save_path = '';
+            else
+                S.object_save_path = object_save_path;
+            end
+
             if isstruct(S)
                 
                 this = audioClip(S);
