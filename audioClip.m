@@ -1733,7 +1733,7 @@ Variables in table:
             end
             
             if ~exist('labels_to_process','var')||isempty(labels_to_process)
-                labels_to_process = ["Low","subjectUSV","stimulusUSV", "USV-Auto"];
+                labels_to_process = ["Low","subjectUSV","stimulusUSV", "USV-Auto", '22_khz_calls'];
             end
             
             
