@@ -130,7 +130,7 @@ classdef audioClip < handle
                     if isfield(S,'probability_vector')
                         this.probability_vector = S.probability_vector;
                     end
-           
+                    
                     
                 else
                     if isvector(S)
@@ -169,6 +169,40 @@ classdef audioClip < handle
                 end
                 obj_copy.(this_att) = obj.(this_att);
             end
+            
+        end
+        function change_setting_to_low(obj,config)
+            if ~exist('config','var') || isempty(config)
+                config = struct;
+                config.ylims = [500, 25000];
+                config.window = 5000;
+                config.fft = 5000;
+                config.overlap = 4750;
+            end
+            
+            
+            if isfield(config,'ylims')
+                obj.ylims = config.ylims;
+            end
+            
+            if isfield(config,'obj.window')
+                obj.obj.window = config.obj.window;
+            end
+            
+            if isfield(config,'fft')
+                obj.fft = config.fft;
+            end
+            
+            if isfield(config,'overlap')
+                obj.overlap = config.overlap;
+            end
+            
+            if isfield(config,'clim')
+                obj.clim = config.clim;
+            end
+            
+            
+            
             
         end
         function newObj = split_obj_by_time(obj,labels,times_range)
@@ -454,7 +488,7 @@ Outputs:
             
         end
         function pram_current = get.lastDetectionParameters(this)
-              pram_default = this.detectionParameters;
+            pram_default = this.detectionParameters;
             pram_current = this.lastDetectionParameters;
             
             default_filednames = fieldnames(pram_default);
@@ -783,7 +817,7 @@ Variables in table:
                 Filtered_psd = nan(sz,125);
             end
             if isscalar(Filtered_psd)
-                 Filtered_psd = nan(sz,125);
+                Filtered_psd = nan(sz,125);
             end
             
             
