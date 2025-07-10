@@ -545,7 +545,7 @@ Outputs:
                 
                 constT = obj.roiTypeList;
                 
-                newNames = input{:,1};
+                newNames = string(input{:,1});
                 
                 constNames = constT{:,1};
                 [~,TF] = setdiff(newNames,constNames);
@@ -826,7 +826,7 @@ Variables in table:
             Sig_psd = num2cell(Sig_psd);
             tabout = table(File_Name,File_Path,Id,Label,Score,Local_SNR,Sig_AMP,Sig_psd,Filtered_psd,Trigger_Time,Begin_Time,End_Time,USV_Length,Mean_Freq,Low_Freq,High_Freq,Range_Freq);
         end
-        function tab = short_table_to_roiTable(obj,tab,x_offset, y_offset)
+        function tab = short_table_to_roiTable(obj,tab,x_offset, y_offset, y_height)
             % y_offset - lift the box so it will not overlap
             if ~exist('y_offset','var')
                 y_offset = 0;
@@ -837,6 +837,9 @@ Variables in table:
                 x_offset = 0;
             end
             
+              if ~exist('y_height','var')
+                y_height = 2000;
+            end
             sz = size(tab,1);
             isTableCol = @(t, thisCol) ismember(thisCol, t.Properties.VariableNames);
             if isTableCol(tab,'FrLow')
@@ -844,7 +847,7 @@ Variables in table:
                 FrHigh = tab.FrHigh;
             else
                 FrLow = zeros(sz,1) + y_offset;
-                FrHigh = ones(sz,1)*20000 + y_offset;
+                FrHigh = ones(sz,1)*y_height + y_offset;
             end
             
             if isTableCol(tab,'Label')
@@ -916,10 +919,10 @@ Variables in table:
             
             SourcePath = repmat({obj.path},size(TimeStart));
             Comments = repmat("",size(TimeStart));
-            
+            Label = string(Label);
             %             tab = table(Label,TimeStart,TimeEnd,FrLow,FrHigh,Duration,AudioVector,SourcePath,Comments);
             tab = table(Label,TimeStart,TimeEnd,FrLow,FrHigh,Duration,Score,SourcePath,Comments);
-            tab = sortrows(tab,{'TimeStart','Label'});
+            tab = sortrows(tab, {'TimeStart','Label'});
         end
         function obj = replaceRowsInTable(obj,tabIn,deleteAllFlag)
             if ~isa(tabIn,'table')
@@ -2187,14 +2190,20 @@ Variables in table:
                 %             ax1.YLim = [100,80000];
                 ax1.YLim = obj.ylims;
                 ax1.YLabel.String = 'Frequency (kHz)';
+                if ~isempty(obj.clim)
+                   ax1.CLim = obj.clim;
+                   
+                end
             end
             ax2 = subplot(k,1,ispect+1);
+            % TODO ensure hat t and vec_ have the same length
             p_line = plot(ax2, t,vec_);
             p_line.DisplayName = 'Signal';
             
             ax2.XLabel.String = 'Time (sec)';
             for i1 = 1:size(labels,2)
-                offset = 0.05*i1;
+%                 offset = 0.05*i1;
+                offset = 0;
                 lable_in = labels{i1};
                 if ~isempty(lable_in)
                     p_out(i1) = plot_vec([obj,obj2], ax2, lable_in,time_range,t,vec_+offset);
@@ -2293,6 +2302,17 @@ Variables in table:
             if nargout>2
                 old_tab = old_t;
             end
+            
+            % set/reset attribue
+            time_vec = (1:numel(prob_vec));
+            
+            prob_vec = reshape(prob_vec, [],1);
+            time_vec = reshape(time_vec, [],1);
+            
+            time_vec = seconds(time_vec./numel(prob_vec).*obj.audioLen_);
+            obj.probability_vector = array2timetable(prob_vec,'RowTimes',time_vec,"VariableNames",{'Probability'});
+
+            
         end
         
         function reset_detection_table(obj, new_detection_params)
@@ -2413,11 +2433,12 @@ Variables in table:
             end
         end
         function timevec = get_time_vec(time_range,fs_)
-            
+      
             sz = size(time_range,1);
             if sz==1
                 
                 time_diff = diff(time_range);
+%                 n_points = floor(time_diff*fs_)+1;
                 n_points = round(time_diff*fs_)+1;
                 timevec = linspace(time_range(1),time_range(2),n_points);
                 timevec(end) = [];

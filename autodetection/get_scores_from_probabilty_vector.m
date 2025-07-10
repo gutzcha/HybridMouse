@@ -12,6 +12,7 @@ offSets = tab.Offsets;
 sz = size(onSets,1);
 
 probability_vectors = reshape(probability_vectors,1,[]);
+
 %option 1
 %scoreFun = @(x,t1,t2,fs) mean(x(1+floor((t1*fs)):floor((t2*fs)))); 
 %option 2

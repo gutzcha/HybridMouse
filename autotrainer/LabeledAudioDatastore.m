@@ -27,6 +27,8 @@ classdef LabeledAudioDatastore < matlab.io.Datastore & ...
         gaussina_filter = struct(...
             'win_len',10,...
             'g_std',2)
+       is_sniff = false
+        
         
         
         
@@ -52,8 +54,13 @@ classdef LabeledAudioDatastore < matlab.io.Datastore & ...
     
     methods
         
-        function ds = LabeledAudioDatastore(signal_ds,noise_ds, extractor_param)
+        function ds = LabeledAudioDatastore(signal_ds,noise_ds, extractor_param,is_sniff)
             % Construct a LabeledAudioDatastore object
+            
+            if ~exist('is_sniff','var')
+               is_sniff = false; 
+            end
+            ds.is_sniff = is_sniff;
             
             ds.DatastoreSignal = signal_ds;
             ds.DatastoreNoise = noise_ds;
@@ -78,7 +85,7 @@ classdef LabeledAudioDatastore < matlab.io.Datastore & ...
             if isfield(extractor_param,'MiniBatchSize')
                 ds.MiniBatchSize = extractor_param.MiniBatchSize;
             else
-                ds.MiniBatchSize = 4;
+                ds.MiniBatchSize = 5;
             end
             
             if isfield(extractor_param,'FileSize')
@@ -172,8 +179,9 @@ classdef LabeledAudioDatastore < matlab.io.Datastore & ...
             source = (x<p);
             
             info = struct;
-            
-            for i = 1:miniBatchSize
+            data = {};
+            i = 1;
+            while size(data,1) < ds.MiniBatchSize
                 if source(i)
                     dsSource = ds.DatastoreSignal;
                     ret =  read(dsSource);
@@ -188,10 +196,12 @@ classdef LabeledAudioDatastore < matlab.io.Datastore & ...
                 predictors{i,1} = ret.vector; %#ok
                 responses(i,1) = {ret.labels}; %#ok
                 ds.CurrentFileIndex = ds.CurrentFileIndex + 1;
+                data_temp = preprocessData(ds,predictors,responses);              
+                data = [data;data_temp]; %#ok
                 
             end
             
-            data = preprocessData(ds,predictors,responses);
+            
         end
         
         function data = preprocessData(ds,signal,responses)
@@ -246,8 +256,21 @@ classdef LabeledAudioDatastore < matlab.io.Datastore & ...
 %                 responses = reshape(responses,[],1);
 %             end
 %             defined_filter = define_a_filter(11,8);
-defined_filter = [];
-            [predictors,~,responses,~,signal]=...
+            defined_filter = [];
+            smooth_label= true;
+            if ds.is_sniff
+                data.vector = signal;
+                data.labels = cell2mat([responses{:}]);
+                [predictors,responses,~,signal] = prepare_files_sniffing_model(...
+                data,...
+                2000, ...
+                500, ...
+                [], ...
+                [],...
+                smooth_label...
+            );
+            else
+                [predictors,~,responses,~,signal]=...
                 prepare_file_for_model(...
                 signal,...
                 defined_filter,...
@@ -260,6 +283,8 @@ defined_filter = [];
                 responses,...
                 override,...
                 output_class);
+            end
+      
             
             
             % Set option for future extraction
